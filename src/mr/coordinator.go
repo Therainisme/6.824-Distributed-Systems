@@ -92,11 +92,15 @@ func (c *Coordinator) Done() bool {
 	c.sm.Unlock()
 
 	if result {
+		// wait 10s for other worker to exit
+		start := time.Now()
 		for {
 			select {
 			case c.taskQueue <- Task{Id: -1}:
 			default:
-				return true
+				if time.Since(start) > time.Second*10 {
+					return true
+				}
 			}
 		}
 	}
