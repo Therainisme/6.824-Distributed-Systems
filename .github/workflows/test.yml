@@ -19,5 +19,5 @@ jobs:
         go-version: 1.18
 
     - name: Run test script
+      working-directory: src/main
       run: bash test-mr.sh
-        working-directory: "src/main"
