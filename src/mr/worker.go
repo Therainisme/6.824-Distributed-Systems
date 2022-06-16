@@ -1,10 +1,14 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-
+import (
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -24,47 +28,17 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-
 //
 // main/mrworker.go calls this function.
 //
-func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string) {
-
+func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
 	// Your worker implementation here.
+	w := worker{}
+	w.mapFunc = mapf
+	w.reduceFunc = reducef
 
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
-
-}
-
-//
-// example function to show how to make an RPC call to the coordinator.
-//
-// the RPC argument and reply types are defined in rpc.go.
-//
-func CallExample() {
-
-	// declare an argument structure.
-	args := ExampleArgs{}
-
-	// fill in the argument(s).
-	args.X = 99
-
-	// declare a reply structure.
-	reply := ExampleReply{}
-
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.Example", &args, &reply)
-	if ok {
-		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
-	} else {
-		fmt.Printf("call failed!\n")
-	}
+	w.register()
+	w.run()
 }
 
 //
@@ -88,4 +62,175 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 
 	fmt.Println(err)
 	return false
+}
+
+type worker struct {
+	id      int
+	nMap    int
+	nReduce int
+
+	mapFunc    func(string, string) []KeyValue
+	reduceFunc func(string, []string) string
+}
+
+func (w *worker) register() {
+	// Register
+	args := WorkerRegisterArgs{}
+	reply := WorkerRegisterReply{}
+	if ok := call("Coordinator.WorkerRegister", &args, &reply); !ok {
+		print("Call Coordinator.WorkerRegister err")
+		os.Exit(1)
+	}
+
+	// store some information
+	w.id = reply.WorkerId
+	w.nMap = reply.NMap
+	w.nReduce = reply.NReduce
+}
+
+func (w *worker) run() {
+	var getTask = func() Task {
+		args := WorkerGetTaskArgs{WorkerId: w.id}
+		reply := WorkerGetTaskReply{}
+		if ok := call("Coordinator.WorkerGetTask", &args, &reply); !ok {
+			print("Call Coordinator.WorkerGetTask err")
+			os.Exit(1)
+		}
+
+		return Task{
+			Id:       reply.TaskId,
+			Type:     reply.TaskType,
+			Filename: reply.Filename,
+		}
+	}
+
+	var reportTask = func(t Task, AC bool) {
+		args := WorkerReportTaskArgs{WorkerId: w.id, Taskid: t.Id, AC: AC}
+		reply := WorkerReportTaskReply{}
+		if ok := call("Coordinator.WorkerReportTask", &args, &reply); !ok {
+			print("Call Coordinator.WorkerReportTask err")
+			os.Exit(1)
+		}
+	}
+
+	var handleMap = func(t Task) {
+		content, err := ioutil.ReadFile(t.Filename)
+		if err != nil {
+			print("cannot read %v", t.Filename)
+			reportTask(t, false)
+			return
+		}
+
+		kva := w.mapFunc(t.Filename, string(content))
+		intermediateData := make([][]KeyValue, w.nReduce)
+
+		for _, kv := range kva {
+			idx := ihash(kv.Key) % w.nReduce
+			intermediateData[idx] = append(intermediateData[idx], kv)
+		}
+
+		for idx, kvs := range intermediateData {
+			file, err := ioutil.TempFile("", "")
+			if err != nil {
+				print("cannot create temp file")
+				reportTask(t, false)
+				return
+			}
+
+			enc := json.NewEncoder(file)
+			for _, kv := range kvs {
+				if err := enc.Encode(&kv); err != nil {
+					print("write intermediate file error")
+					reportTask(t, false)
+					return
+				}
+			}
+
+			// mr-<task's id>-<idx>
+			if err := os.Rename(file.Name(), fmt.Sprintf("mr-%d-%d", t.Id, idx)); err != nil {
+				print("cannot rename intermediate file")
+				reportTask(t, false)
+				return
+			}
+		}
+
+		reportTask(t, true)
+	}
+
+	var handleReduce = func(t Task) {
+		// read from mr-<0~nMap>-<task's id>
+		outputFile, err := ioutil.TempFile("", "")
+		if err != nil {
+			print("cannot create temp file")
+			reportTask(t, false)
+			return
+		}
+
+		mapOutput := make(map[string][]string, 0)
+
+		// read intermediate file
+		for i := 0; i < w.nMap; i++ {
+			// read mr-<i>-<task's id>
+			filename := fmt.Sprintf("mr-%d-%d", i, t.Id)
+			intermediateFile, err := os.Open(filename)
+			if err != nil {
+				print("cannot open intermediate file")
+				reportTask(t, false)
+				return
+			}
+
+			dec := json.NewDecoder(intermediateFile)
+			for {
+				var kv KeyValue
+				if err := dec.Decode(&kv); err != nil {
+					break
+				}
+				if _, ok := mapOutput[kv.Key]; !ok {
+					mapOutput[kv.Key] = make([]string, 0)
+				}
+				mapOutput[kv.Key] = append(mapOutput[kv.Key], kv.Value)
+			}
+		}
+
+		// call reduceFunc
+		for key, valueList := range mapOutput {
+			_, err := fmt.Fprintf(outputFile, "%v %v\n", key, w.reduceFunc(key, valueList))
+			if err != nil {
+				print("write output file error")
+				reportTask(t, false)
+				return
+			}
+		}
+
+		// mr-out-<task's id>
+		if err := os.Rename(outputFile.Name(), fmt.Sprintf("mr-out-%d", t.Id)); err != nil {
+			print("write output file error")
+			reportTask(t, false)
+			return
+		}
+
+		reportTask(t, true)
+	}
+
+	for {
+		t := getTask()
+		if t.Id == -1 {
+			print("worker receive task which id is -1, exit")
+			return
+		}
+
+		print("worker [%d] is running task: [%+v]", w.id, t)
+
+		switch t.Type {
+		case MapPeriod:
+			handleMap(t)
+
+		case ReducePeriod:
+			handleReduce(t)
+
+		default:
+			print("Receive impossible task type")
+			os.Exit(1)
+		}
+	}
 }
