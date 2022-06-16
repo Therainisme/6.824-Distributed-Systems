@@ -1,0 +1,23 @@
+name: Go
+
+on:
+  push:
+    branches: [ "main", "code" ]
+  pull_request:
+    branches: [ "main", "code" ]
+
+jobs:
+
+  MapReduce:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Run test script
+      run: bash test-mr.sh
+        working-directory: "src/main"
