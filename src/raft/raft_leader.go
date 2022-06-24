@@ -29,6 +29,8 @@ func (rf *Raft) sendAppendEntries() {
 		args.PrevLogIndex = rf.nextIndex[server] - 1
 		args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
 		if rf.nextIndex[server] <= rf.getLastLogIndex() {
+			// If last log index ≥ nextIndex for a follower:
+			// send AppendEntries RPC with log entries starting at nextIndex
 			args.Entries = rf.log[rf.nextIndex[server]:]
 		}
 		args.LeaderCommit = rf.commitIndex
@@ -57,11 +59,13 @@ func (rf *Raft) sendAppendEntries() {
 		}
 
 		if reply.Success {
+			// If successful: update nextIndex and matchIndex for follower (§5.3)
 			if len(args.Entries) > 0 {
 				rf.nextIndex[server] = args.Entries[len(args.Entries)-1].Index + 1
 				rf.matchIndex[server] = rf.nextIndex[server] - 1
 			}
 		} else {
+			// If AppendEntries fails because of log inconsistency: decrement nextIndex and retry (§5.3)
 			if rf.nextIndex[server] > 1 {
 				rf.nextIndex[server] -= 1
 			}
@@ -72,6 +76,26 @@ func (rf *Raft) sendAppendEntries() {
 	for peer := range rf.peers {
 		if peer != rf.me {
 			go send(peer)
+		}
+	}
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	// If there exists an N such that
+	// N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+	// set commitIndex = N (§5.3, §5.4).
+	for n := rf.getLastLogIndex(); n > rf.commitIndex && rf.log[n].Term == rf.currentTerm; n-- {
+		count := 1
+		for peer := range rf.peers {
+			if peer != rf.me && rf.matchIndex[peer] >= n {
+				count++
+			}
+		}
+		if count > len(rf.peers)/2 {
+			rf.commitIndex = n
+			go rf.applyLog()
+			break
 		}
 	}
 }

@@ -63,6 +63,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if rf.commitIndex < args.LeaderCommit {
 		// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 		rf.commitIndex = min(args.LeaderCommit, rf.getLastLogIndex())
+		go rf.applyLog()
 	}
 }
 

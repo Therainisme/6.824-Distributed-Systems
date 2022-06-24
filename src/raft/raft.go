@@ -83,6 +83,8 @@ type Raft struct {
 	state                 int
 	voteCount             int
 	lastResetElectionTime time.Time
+
+	applyCh chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -168,11 +170,28 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
-
 	// Your code here (2B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.killed() {
+		return -1, -1, false
+	}
+
+	isLeader := rf.state == LEADER_STATE
+
+	if !isLeader {
+		return -1, -1, isLeader
+	}
+
+	index := rf.getLastLogIndex() + 1
+	term := rf.currentTerm
+
+	rf.log = append(rf.log, LogEntry{
+		Term:    term,
+		Index:   index,
+		Command: command,
+	})
 
 	return index, term, isLeader
 }
@@ -198,11 +217,6 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-// The ticker go routine starts a new election if this peer hasn't received
-// heartsbeats recently.
-func (rf *Raft) ticker() {
-}
-
 //
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
@@ -222,6 +236,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.applyCh = applyCh
+
 	rf.currentTerm = 0
 	rf.votedFor = -1
 	rf.log = append(rf.log, LogEntry{})

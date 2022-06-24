@@ -2,6 +2,19 @@ package raft
 
 import "time"
 
+func (rf *Raft) candidateTicker() {
+	for !rf.killed() {
+		nowTime := time.Now()
+		<-createTimeout(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
+
+		rf.mu.Lock()
+		if rf.lastResetElectionTime.Before(nowTime) && rf.state != LEADER_STATE {
+			rf.changeState(CANDIDATE_STATE, true)
+		}
+		rf.mu.Unlock()
+	}
+}
+
 //
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
@@ -118,8 +131,8 @@ func (rf *Raft) startSendRequestVote() {
 		reply := RequestVoteReply{}
 		rf.mu.Unlock()
 
-		result := rf.sendRequestVote(server, &args, &reply)
-		if !result {
+		ok := rf.sendRequestVote(server, &args, &reply)
+		if !ok {
 			return
 		}
 
@@ -156,18 +169,5 @@ func (rf *Raft) startSendRequestVote() {
 		if peer != rf.me {
 			go handle(peer)
 		}
-	}
-}
-
-func (rf *Raft) candidateTicker() {
-	for !rf.killed() {
-		nowTime := time.Now()
-		<-createTimeout(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
-
-		rf.mu.Lock()
-		if rf.lastResetElectionTime.Before(nowTime) && rf.state != LEADER_STATE {
-			rf.changeState(CANDIDATE_STATE, true)
-		}
-		rf.mu.Unlock()
 	}
 }
