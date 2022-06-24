@@ -162,8 +162,7 @@ func (rf *Raft) startSendRequestVote() {
 func (rf *Raft) candidateTicker() {
 	for !rf.killed() {
 		nowTime := time.Now()
-		timeOut := getRand(int64(rf.me))
-		time.Sleep(time.Duration(timeOut) * time.Millisecond)
+		<-createTimeout(ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MAX)
 
 		rf.mu.Lock()
 		if rf.lastResetElectionTime.Before(nowTime) && rf.state != LEADER_STATE {

@@ -48,9 +48,15 @@ func (rf *Raft) changeState(nextState int, resetTime bool) {
 	}
 }
 
-func getRand(server int64) int {
-	rand.Seed(time.Now().Unix() + server)
-	return rand.Intn(ELECTION_TIMEOUT_MAX-ELECTION_TIMEOUT_MIN) + ELECTION_TIMEOUT_MIN
+// create a timeout [low, cap] ms
+func createTimeout(low, cap int) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		time.Sleep(time.Millisecond * time.Duration(low+rand.Intn(cap-low+1)))
+		ch <- struct{}{}
+	}()
+
+	return ch
 }
 
 func (rf *Raft) getLastLogIndex() int {

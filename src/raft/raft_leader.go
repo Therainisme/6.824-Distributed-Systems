@@ -1,10 +1,8 @@
 package raft
 
-import "time"
-
 func (rf *Raft) leaderTicker() {
 	for !rf.killed() {
-		time.Sleep(HEARTBEAT_TIMEOUT * time.Millisecond)
+		<-createTimeout(HEARTBEAT_TIMEOUT, HEARTBEAT_TIMEOUT)
 
 		rf.mu.Lock()
 		isLeader := rf.state == LEADER_STATE

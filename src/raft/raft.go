@@ -20,6 +20,7 @@ package raft
 import (
 	//	"bytes"
 
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -235,6 +236,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.readPersist(persister.ReadRaftState())
 
 	// start ticker goroutine to start elections
+
+	rand.Seed(time.Now().UnixNano())
 
 	go rf.candidateTicker()
 
