@@ -2,9 +2,9 @@ name: Lab Test
 
 on:
   push:
-    branches: [ "main", "code" ]
+    branches: [ "master", "code" ]
   pull_request:
-    branches: [ "main", "code" ]
+    branches: [ "master", "code" ]
 
 jobs:
 
