@@ -24,8 +24,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer func() {
+		go rf.persist()
+	}()
 
-	rf.uprint("Logs %+v", rf.log)
+	// rf.uprint("Logs %+v", rf.log)
 
 	if args.Term < rf.currentTerm {
 		// Reply false if term < currentTerm (§5.1)
@@ -40,7 +43,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// set currentTerm = T, convert to follower (§5.1)
 		rf.currentTerm = args.Term
 
-		go rf.gotoState(FOLLOWER_STATE)
+		rf.gotoState(FOLLOWER_STATE, false)
 	}
 
 	rf.receiveAppendEntries <- struct{}{}
@@ -58,6 +61,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
 		reply.Success = false
 		reply.Term = rf.currentTerm
+		rf.log = rf.log[:args.PrevLogIndex+1]
+
+		rf.gotoState(FOLLOWER_STATE, false)
+
 		return
 	}
 
@@ -80,6 +87,9 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer func() {
+		go rf.persist()
+	}()
 
 	if !ok || args.Term != rf.currentTerm {
 		return
@@ -89,7 +99,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		// If RPC request or response contains term T > currentTerm:
 		// set currentTerm = T, convert to follower (§5.1)
 		rf.currentTerm = reply.Term
-		go rf.gotoState(FOLLOWER_STATE)
+		go rf.gotoState(FOLLOWER_STATE, true)
 		return
 	}
 
@@ -101,7 +111,12 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		}
 	} else {
 		// If AppendEntries fails because of log inconsistency: decrement nextIndex and retry (§5.3)
-		rf.nextIndex[server] -= 1
+		if rf.nextIndex[server] > 1 {
+			rf.nextIndex[server] = rf.getPrevTermLogIndex(rf.nextIndex[server]) + 1
+			rf.uprint("log len %d, nextIndex %d\n", len(rf.log), rf.nextIndex[server])
+		} else {
+			rf.nextIndex[server] = 1
+		}
 	}
 
 	// If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm:

@@ -30,6 +30,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer func() {
+		go rf.persist()
+	}()
+
+	// rf.uprint("Logs %+v", rf.log)
 
 	if args.Term < rf.currentTerm {
 		// Reply false if term < currentTerm (§5.1)
@@ -43,9 +48,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		// If RPC request or response contains term T > currentTerm:
 		// set currentTerm = T, convert to follower (§5.1)
 		rf.currentTerm = args.Term
-		rf.votedFor = -1
 
-		go rf.gotoState(FOLLOWER_STATE)
+		rf.gotoState(FOLLOWER_STATE, false)
+
+		rf.votedFor = -1
 	}
 
 	if rf.votedFor == -1 && (args.LastLogTerm > rf.getLastLogTerm() || args.LastLogTerm == rf.getLastLogTerm() && args.LastLogIndex >= rf.getLastLogIndex()) {

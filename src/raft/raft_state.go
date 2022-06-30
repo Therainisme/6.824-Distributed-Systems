@@ -12,9 +12,15 @@ const (
 	FOLLOWER_STATE  = 3
 )
 
-func (rf *Raft) gotoState(nextState int) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+func (rf *Raft) gotoState(nextState int, block bool) {
+	if block {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+	}
+
+	defer func() {
+		go rf.persist()
+	}()
 
 	// cancel ctx of prevous state
 	rf.cancelPrevStateCtx()
@@ -44,11 +50,10 @@ func (rf *Raft) gotoState(nextState int) {
 	case LEADER_STATE:
 
 		rf.state = LEADER_STATE
-		rf.votedFor = -1
 		rf.nextIndex = make([]int, len(rf.peers))
 		rf.matchIndex = make([]int, len(rf.peers))
 		for peer := range rf.peers {
-			rf.nextIndex[peer] = rf.lastAppiled + 1
+			rf.nextIndex[peer] = rf.getLastLogIndex() + 1
 		}
 
 		rf.uprint("successful become leader!")
@@ -58,7 +63,7 @@ func (rf *Raft) gotoState(nextState int) {
 }
 
 func (rf *Raft) followerTicker(stateCtx context.Context) {
-	rf.bprint("start new follower ticker")
+	// rf.bprint("start new follower ticker")
 
 	for !rf.killed() {
 		select {
@@ -66,7 +71,7 @@ func (rf *Raft) followerTicker(stateCtx context.Context) {
 			return
 
 		case <-createTimeout(300, 451):
-			go rf.gotoState(CANDIDATE_STATE)
+			go rf.gotoState(CANDIDATE_STATE, true)
 
 		case <-rf.receiveAppendEntries:
 
@@ -76,7 +81,12 @@ func (rf *Raft) followerTicker(stateCtx context.Context) {
 }
 
 func (rf *Raft) candidateTicker(stateCtx context.Context) {
+	defer func() {
+		go rf.persist()
+	}()
+
 	grantCount := 1
+	failCount := 0
 	voteReplyCh := make(chan VoteReply, len(rf.peers))
 
 	var send = func(server int) {
@@ -102,14 +112,14 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 	for !rf.killed() {
 		select {
 		case <-rf.receiveAppendEntries:
-			go rf.gotoState(FOLLOWER_STATE)
+			go rf.gotoState(FOLLOWER_STATE, true)
 			return
 
 		case <-stateCtx.Done():
 			return
 
 		case <-createTimeout(300, 451):
-			go rf.gotoState(CANDIDATE_STATE)
+			go rf.gotoState(CANDIDATE_STATE, true)
 			return
 
 		case reply := <-voteReplyCh:
@@ -117,12 +127,24 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 
 			rf.mu.Lock()
 
+			if !reply.ok {
+				failCount += 1
+				if failCount > len(rf.peers)/2 {
+					rf.currentTerm -= 1
+
+					go rf.gotoState(CANDIDATE_STATE, true)
+
+					rf.mu.Unlock()
+					return
+				}
+			}
+
 			if reply.Term > rf.currentTerm {
 				// If RPC request or response contains term T > currentTerm:
 				// set currentTerm = T, convert to follower (§5.1)
 				rf.currentTerm = reply.Term
 
-				go rf.gotoState(FOLLOWER_STATE)
+				go rf.gotoState(FOLLOWER_STATE, true)
 
 				rf.mu.Unlock()
 				return
@@ -133,7 +155,7 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 
 				if grantCount > len(rf.peers)/2 {
 
-					go rf.gotoState(LEADER_STATE)
+					go rf.gotoState(LEADER_STATE, true)
 
 					rf.mu.Unlock()
 					return
@@ -164,7 +186,7 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 				LeaderId:     rf.me,
 				PrevLogIndex: prevLogIndex,
 				PrevLogTerm:  prevLogTerm,
-				Entries:      rf.log[rf.nextIndex[peer]:],
+				Entries:      Copy(rf.log[rf.nextIndex[peer]:]).([]LogEntry),
 				LeaderCommit: rf.commitIndex,
 			}
 			rf.mu.Unlock()
@@ -184,7 +206,7 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 			// Upon election: send initial empty AppendEntries RPCs (heartbeat) to each server;
 			// repeat during idle periods to prevent election timeouts (§5.2)
 
-			rf.bprint("sending")
+			// rf.bprint("sending")
 			go send()
 		}
 	}
