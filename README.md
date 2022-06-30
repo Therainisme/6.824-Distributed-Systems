@@ -3,7 +3,9 @@
 [6.824 Schedule: Spring 2022](https://pdos.csail.mit.edu/6.824/schedule.html)
 
 - [x] MapReduce: [Action](https://github.com/Therainisme/6.824-Spring-2022/runs/6915081108)
-- [ ] Raft
+- [X] Raft 2A
+- [X] Raft 2B
+- [ ] Raft 2C
 
 ## MapReduce
 

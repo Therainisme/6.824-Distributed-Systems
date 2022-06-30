@@ -28,29 +28,6 @@ import (
 )
 
 //
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make(). set
-// CommandValid to true to indicate that the ApplyMsg contains a newly
-// committed log entry.
-//
-// in part 2D you'll want to send other kinds of messages (e.g.,
-// snapshots) on the applyCh, but set CommandValid to false for these
-// other uses.
-//
-type ApplyMsg struct {
-	CommandValid bool
-	Command      interface{}
-	CommandIndex int
-
-	// For 2D:
-	SnapshotValid bool
-	Snapshot      []byte
-	SnapshotTerm  int
-	SnapshotIndex int
-}
-
-//
 // A Go object implementing a single Raft peer.
 //
 type Raft struct {
@@ -79,6 +56,7 @@ type Raft struct {
 	nextIndex  []int // for each server, index of the next log entry to send to that serve
 	matchIndex []int // for each server, index of highest log entry known to be replicated on server
 
+	applyCh              chan ApplyMsg
 	cancelPrevStateCtx   context.CancelFunc
 	state                int
 	receiveAppendEntries chan struct{}
@@ -168,11 +146,24 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
+	// Your code here (2B).
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.state != LEADER_STATE {
+		return -1, -1, false
+	}
+
+	index := rf.getLastLogIndex() + 1
+	term := rf.currentTerm
 	isLeader := true
 
-	// Your code here (2B).
+	rf.log = append(rf.log, LogEntry{
+		Index:   index,
+		Term:    term,
+		Command: command,
+	})
 
 	return index, term, isLeader
 }
@@ -221,8 +212,7 @@ func (rf *Raft) ticker() {
 // Make() must return quickly, so it should start goroutines
 // for any long-running work.
 //
-func Make(peers []*labrpc.ClientEnd, me int,
-	persister *Persister, applyCh chan ApplyMsg) *Raft {
+func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
@@ -243,6 +233,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// some mechanism
 	rf.receiveAppendEntries = make(chan struct{}, 100)
 	rf.receiveRequestVote = make(chan struct{}, 100)
+	rf.applyCh = applyCh
 
 	_, cancel := context.WithCancel(context.Background())
 	rf.cancelPrevStateCtx = cancel

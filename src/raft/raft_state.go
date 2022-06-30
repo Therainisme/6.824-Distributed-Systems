@@ -147,43 +147,29 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 
 func (rf *Raft) leaderTicker(stateCtx context.Context) {
 
-	var receive = func(reply EntriesReply) {
-
-		rf.mu.Lock()
-		defer rf.mu.Unlock()
-
-		if reply.Term > rf.currentTerm {
-			// If RPC request or response contains term T > currentTerm:
-			// set currentTerm = T, convert to follower (§5.1)
-			rf.currentTerm = reply.Term
-
-			go rf.gotoState(FOLLOWER_STATE)
-			return
-		}
-	}
-
 	var send = func() {
 		for peer := range rf.peers {
 			if peer == rf.me {
 				continue
 			}
 
+			// If last log index ≥ nextIndex for a follower:
+			// send AppendEntries RPC with log entries starting at nextIndex
+
 			rf.mu.Lock()
+			prevLogIndex := rf.nextIndex[peer] - 1
+			prevLogTerm := rf.log[prevLogIndex].Term
 			args := AppendEntriesArgs{
 				Term:         rf.currentTerm,
 				LeaderId:     rf.me,
-				PrevLogIndex: rf.log[rf.nextIndex[peer]-1].Index,
-				PrevLogTerm:  rf.log[rf.nextIndex[peer]-1].Term,
-				// Entries: rf.log,
+				PrevLogIndex: prevLogIndex,
+				PrevLogTerm:  prevLogTerm,
+				Entries:      rf.log[rf.nextIndex[peer]:],
 				LeaderCommit: rf.commitIndex,
 			}
 			rf.mu.Unlock()
 
-			reply := AppendEntriesReply{}
-
-			go func(idx int) {
-				receive(rf.sendAppendEntries(idx, &args, &reply))
-			}(peer)
+			go rf.sendAppendEntries(peer, args, &AppendEntriesReply{})
 		}
 	}
 
@@ -195,6 +181,9 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 			return
 
 		case <-createTimeout(50, 51):
+			// Upon election: send initial empty AppendEntries RPCs (heartbeat) to each server;
+			// repeat during idle periods to prevent election timeouts (§5.2)
+
 			rf.bprint("sending")
 			go send()
 		}

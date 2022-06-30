@@ -19,7 +19,7 @@ func (rf *Raft) bprint(format string, a ...interface{}) {
 	if Debug {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
-		info := fmt.Sprintf("[Peer:%d Term: %d, Type: %s, Kill: %v] ", rf.me, rf.currentTerm, rf.getStateStr(), rf.killed())
+		info := fmt.Sprintf("[Peer:%d Term: %d, Type: %s, Commit: %d, Kill: %v] ", rf.me, rf.currentTerm, rf.getStateStr(), rf.commitIndex, rf.killed())
 		formatInfo := info + format
 		log.Printf(formatInfo, a...)
 	}
@@ -27,7 +27,7 @@ func (rf *Raft) bprint(format string, a ...interface{}) {
 
 func (rf *Raft) uprint(format string, a ...interface{}) {
 	if Debug {
-		info := fmt.Sprintf("[Peer:%d Term: %d, Type: %s, Kill: %v] ", rf.me, rf.currentTerm, rf.getStateStr(), rf.killed())
+		info := fmt.Sprintf("[Peer:%d Term: %d, Type: %s, Commit: %d, Kill: %v] ", rf.me, rf.currentTerm, rf.getStateStr(), rf.commitIndex, rf.killed())
 		formatInfo := info + format
 		log.Printf(formatInfo, a...)
 	}
@@ -42,4 +42,11 @@ func (rf *Raft) getStateStr() string {
 	default:
 		return "DER"
 	}
+}
+
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
 }
