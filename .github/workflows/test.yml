@@ -21,3 +21,45 @@ jobs:
     - name: Run test script
       working-directory: src/main
       run: bash test-mr.sh
+
+  Raft2A:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Test 2A
+      working-directory: src/raft
+      run: go test -race -run 2A
+
+  Raft2B:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Test 2B
+      working-directory: src/raft
+      run: go test -race -run 2B
+      
+  Raft2C:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Test 2C
+      working-directory: src/raft
+      run: go test -race -run 2C

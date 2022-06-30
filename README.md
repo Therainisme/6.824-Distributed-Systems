@@ -5,7 +5,8 @@
 - [x] MapReduce: [Action](https://github.com/Therainisme/6.824-Spring-2022/runs/6915081108)
 - [X] Raft 2A
 - [X] Raft 2B
-- [ ] Raft 2C
+- [X] Raft 2C
+- [ ] Raft 2D
 
 ## MapReduce
 
