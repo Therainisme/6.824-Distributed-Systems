@@ -131,7 +131,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	})
 
 	rf.uprint("L receive log index: %d term: %d command: %v", index, term, command)
-	rf.uprint("Now L Logs: %v", rf.log)
+	// rf.uprint("Now L Logs: %v", rf.log)
 
 	return index, term, isLeader
 }

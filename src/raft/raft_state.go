@@ -70,8 +70,8 @@ func (rf *Raft) followerTicker(stateCtx context.Context) {
 		case <-stateCtx.Done():
 			return
 
-		case <-createTimeout(300, 451):
-			go rf.gotoState(CANDIDATE_STATE, true)
+		case <-createTimeout(500, 551):
+			rf.gotoState(CANDIDATE_STATE, true)
 
 		case <-rf.receiveAppendEntries:
 
@@ -100,7 +100,18 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 		rf.mu.Unlock()
 
 		reply := RequestVoteReply{}
-		voteReplyCh <- rf.sendRequestVote(server, &args, &reply)
+		VoteReply := rf.sendRequestVote(server, &args, &reply)
+
+		rf.bprint("get vote %+v", VoteReply)
+
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+
+		if args.Term != rf.currentTerm {
+			return
+		}
+
+		voteReplyCh <- VoteReply
 	}
 
 	for peer := range rf.peers {
@@ -112,18 +123,17 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 	for !rf.killed() {
 		select {
 		case <-rf.receiveAppendEntries:
-			go rf.gotoState(FOLLOWER_STATE, true)
+			rf.gotoState(FOLLOWER_STATE, true)
 			return
 
 		case <-stateCtx.Done():
 			return
 
-		case <-createTimeout(300, 451):
-			go rf.gotoState(CANDIDATE_STATE, true)
+		case <-createTimeout(500, 551):
+			rf.gotoState(CANDIDATE_STATE, true)
 			return
 
 		case reply := <-voteReplyCh:
-			rf.bprint("get vote %+v", reply)
 
 			rf.mu.Lock()
 
@@ -132,7 +142,7 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 				if failCount > len(rf.peers)/2 {
 					rf.currentTerm -= 1
 
-					go rf.gotoState(CANDIDATE_STATE, true)
+					rf.gotoState(CANDIDATE_STATE, false)
 
 					rf.mu.Unlock()
 					return
@@ -144,7 +154,7 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 				// set currentTerm = T, convert to follower (§5.1)
 				rf.currentTerm = reply.Term
 
-				go rf.gotoState(FOLLOWER_STATE, true)
+				rf.gotoState(FOLLOWER_STATE, false)
 
 				rf.mu.Unlock()
 				return
@@ -155,7 +165,7 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 
 				if grantCount > len(rf.peers)/2 {
 
-					go rf.gotoState(LEADER_STATE, true)
+					rf.gotoState(LEADER_STATE, false)
 
 					rf.mu.Unlock()
 					return
@@ -181,12 +191,15 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 			rf.mu.Lock()
 			prevLogIndex := rf.nextIndex[peer] - 1
 			prevLogTerm := rf.log[prevLogIndex].Term
+			entries := make([]LogEntry, len(rf.log[rf.nextIndex[peer]:]))
+			copy(entries, rf.log[rf.nextIndex[peer]:])
+
 			args := AppendEntriesArgs{
 				Term:         rf.currentTerm,
 				LeaderId:     rf.me,
 				PrevLogIndex: prevLogIndex,
 				PrevLogTerm:  prevLogTerm,
-				Entries:      Copy(rf.log[rf.nextIndex[peer]:]).([]LogEntry),
+				Entries:      entries,
 				LeaderCommit: rf.commitIndex,
 			}
 			rf.mu.Unlock()

@@ -63,16 +63,3 @@ func (rf *Raft) getPrevTermLogIndex(idx int) int {
 
 	return i
 }
-
-func Copy(value interface{}) interface{} {
-	if valueSlice, ok := value.([]interface{}); ok {
-		newSlice := make([]interface{}, len(valueSlice))
-		for k, v := range valueSlice {
-			newSlice[k] = Copy(v)
-		}
-
-		return newSlice
-	}
-
-	return value
-}

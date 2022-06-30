@@ -29,6 +29,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}()
 
 	// rf.uprint("Logs %+v", rf.log)
+	rf.uprint("receive from server %d", args.LeaderId)
 
 	if args.Term < rf.currentTerm {
 		// Reply false if term < currentTerm (§5.1)
@@ -63,8 +64,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term = rf.currentTerm
 		rf.log = rf.log[:args.PrevLogIndex+1]
 
-		rf.gotoState(FOLLOWER_STATE, false)
-
 		return
 	}
 
@@ -78,7 +77,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = min(args.LeaderCommit, rf.getLastLogIndex())
-		go rf.apply()
+		rf.apply()
 	}
 }
 
@@ -92,6 +91,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 	}()
 
 	if !ok || args.Term != rf.currentTerm {
+		rf.uprint("send error to server %d", server)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		// If RPC request or response contains term T > currentTerm:
 		// set currentTerm = T, convert to follower (§5.1)
 		rf.currentTerm = reply.Term
-		go rf.gotoState(FOLLOWER_STATE, true)
+		rf.gotoState(FOLLOWER_STATE, false)
 		return
 	}
 
@@ -129,7 +129,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 			}
 			if count > len(rf.peers)/2 {
 				rf.commitIndex = n
-				go rf.apply()
+				rf.apply()
 				break
 			}
 		}

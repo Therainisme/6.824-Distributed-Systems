@@ -27,9 +27,6 @@ func (rf *Raft) apply() {
 	// If commitIndex > lastApplied:
 	// increment lastApplied, apply log[lastApplied] to state machine (§5.3)
 
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
 	for i := rf.lastAppiled + 1; i <= rf.commitIndex; i++ {
 		msg := ApplyMsg{}
 		msg.CommandIndex = i
