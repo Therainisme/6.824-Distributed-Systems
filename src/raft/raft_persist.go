@@ -16,13 +16,19 @@ func (rf *Raft) persist() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	data := rf.getPersistData()
+	rf.persister.SaveRaftState(data)
+}
+
+func (rf *Raft) getPersistData() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
 	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
+
+	return data
 }
 
 //

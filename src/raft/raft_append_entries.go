@@ -141,11 +141,11 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 			if peer != rf.me && rf.matchIndex[peer] >= n {
 				count++
 			}
-			if count > len(rf.peers)/2 {
-				rf.commitIndex = n
-				rf.apply()
-				break
-			}
+		}
+		if count > len(rf.peers)/2 {
+			rf.commitIndex = n
+			rf.apply()
+			break
 		}
 	}
 }
