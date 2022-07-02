@@ -67,12 +67,26 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
-	// Success
-	reply.Success = true
-	reply.Term = rf.currentTerm
+	if len(args.Entries) > 0 && rf.getLastLogIndex() >= args.Entries[len(args.Entries)-1].Index {
+		for _, entries := range args.Entries {
+			if rf.log[entries.Index].Term != entries.Term {
+				rf.log = rf.log[:entries.Index]
+				reply.Success = false
+				reply.Term = rf.currentTerm
+				return
+			}
+		}
 
-	rf.log = rf.log[:args.PrevLogIndex+1]
-	rf.log = append(rf.log, args.Entries...)
+		reply.Success = true
+		reply.Term = rf.currentTerm
+	} else {
+		// Success
+		reply.Success = true
+		reply.Term = rf.currentTerm
+
+		rf.log = rf.log[:args.PrevLogIndex+1]
+		rf.log = append(rf.log, args.Entries...)
+	}
 
 	// If leaderCommit > commitIndex, set commitIndex = min(leaderCommit, index of last new entry)
 	if args.LeaderCommit > rf.commitIndex {
@@ -107,7 +121,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		if len(args.Entries) > 0 {
 			// If successful: update nextIndex and matchIndex for follower (§5.3)
 			rf.nextIndex[server] = args.Entries[len(args.Entries)-1].Index + 1
-			rf.matchIndex[server] = rf.nextIndex[server] - 1
+			rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
 		}
 	} else {
 		// If AppendEntries fails because of log inconsistency: decrement nextIndex and retry (§5.3)
