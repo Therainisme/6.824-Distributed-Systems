@@ -180,6 +180,8 @@ func (rf *Raft) candidateTicker(stateCtx context.Context) {
 func (rf *Raft) leaderTicker(stateCtx context.Context) {
 
 	var send = func() {
+		rf.mu.Lock()
+
 		for peer := range rf.peers {
 			if peer == rf.me {
 				continue
@@ -188,11 +190,10 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 			// If last log index ≥ nextIndex for a follower:
 			// send AppendEntries RPC with log entries starting at nextIndex
 
-			rf.mu.Lock()
 			prevLogIndex := rf.nextIndex[peer] - 1
-			prevLogTerm := rf.log[prevLogIndex].Term
-			entries := make([]LogEntry, len(rf.log[rf.nextIndex[peer]:]))
-			copy(entries, rf.log[rf.nextIndex[peer]:])
+			prevLogTerm := rf.log[rf.convertIndex(prevLogIndex)].Term
+			entries := make([]LogEntry, len(rf.log[rf.convertIndex(rf.nextIndex[peer]):]))
+			copy(entries, rf.log[rf.convertIndex(rf.nextIndex[peer]):])
 
 			args := AppendEntriesArgs{
 				Term:         rf.currentTerm,
@@ -202,10 +203,10 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 				Entries:      entries,
 				LeaderCommit: rf.commitIndex,
 			}
-			rf.mu.Unlock()
-
 			go rf.sendAppendEntries(peer, args, &AppendEntriesReply{})
 		}
+
+		rf.mu.Unlock()
 	}
 
 	go send()

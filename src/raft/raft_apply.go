@@ -31,7 +31,7 @@ func (rf *Raft) apply() {
 		msg := ApplyMsg{}
 		msg.CommandIndex = i
 		msg.CommandValid = true
-		msg.Command = rf.log[i].Command
+		msg.Command = rf.log[rf.convertIndex(i)].Command
 		rf.applyCh <- msg
 
 		rf.uprint("apply %v", i)

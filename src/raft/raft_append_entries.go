@@ -59,18 +59,18 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// If an existing entry conflicts with a new one (same index but different terms),
 	// delete the existing entry and all that follow it (§5.3)
-	if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
+	if args.PrevLogTerm != rf.log[rf.convertIndex(args.PrevLogIndex)].Term {
 		reply.Success = false
 		reply.Term = rf.currentTerm
-		rf.log = rf.log[:args.PrevLogIndex+1]
+		rf.log = rf.log[:rf.convertIndex(args.PrevLogIndex+1)]
 
 		return
 	}
 
 	if len(args.Entries) > 0 && rf.getLastLogIndex() >= args.Entries[len(args.Entries)-1].Index {
 		for _, entries := range args.Entries {
-			if rf.log[entries.Index].Term != entries.Term {
-				rf.log = rf.log[:entries.Index]
+			if rf.log[rf.convertIndex(entries.Index)].Term != entries.Term {
+				rf.log = rf.log[:rf.convertIndex(entries.Index)]
 				reply.Success = false
 				reply.Term = rf.currentTerm
 				return
@@ -84,7 +84,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = true
 		reply.Term = rf.currentTerm
 
-		rf.log = rf.log[:args.PrevLogIndex+1]
+		rf.log = rf.log[:rf.convertIndex(args.PrevLogIndex+1)]
 		rf.log = append(rf.log, args.Entries...)
 	}
 
@@ -135,7 +135,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 
 	// If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 	// set commitIndex = N (§5.3, §5.4).
-	for n := rf.getLastLogIndex(); n > rf.commitIndex && rf.log[n].Term == rf.currentTerm; n-- {
+	for n := rf.getLastLogIndex(); n > rf.commitIndex && rf.log[rf.convertIndex(n)].Term == rf.currentTerm; n-- {
 		count := 1
 		for peer := range rf.peers {
 			if peer != rf.me && rf.matchIndex[peer] >= n {
