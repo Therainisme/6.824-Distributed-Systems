@@ -76,7 +76,7 @@ jobs:
     - name: Test 2D
       working-directory: src/raft
       run: go test -run 2D
-  Raft ALL:
+  RaftALL:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
