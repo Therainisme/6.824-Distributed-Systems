@@ -6,7 +6,7 @@
 - [X] Raft 2A
 - [X] Raft 2B
 - [X] Raft 2C
-- [ ] Raft 2D
+- [X] Raft 2D
 
 ## MapReduce
 
@@ -14,11 +14,11 @@
 
 ## Raft 2A
 
-论文中 Figure 2 的图已经描述得非常明确了。这里有实现的一些细节。
+论文中 Figure 2 的图已经描述得非常明确了。现在记录一些实现的细节。
 
-这里必须要实现一个状态机，**当切换状态后，之前的所有执行的函数必须退出。**，而且锁的颗粒度应该尽可能的大，但不能锁上 RPC。
+这里必须要实现一个状态机，**当切换状态后，之前状态的所有执行的函数必须退出。**，而且锁的颗粒度应该尽可能的大，但不能锁上 RPC。
 
-实验中的 RPC Call，如果锁上 Call 了，若模拟的网络延时非常大，调用方将会一直阻塞在 Call 调用处。什么时候返回 true 和 false，在 RequestVote 的注释中写得很清楚。
+实验中的 RPC Call，如果锁上 PRC 了，若模拟的网络延时非常大，调用方将会一直阻塞在 Call 调用处。什么时候返回 true 和 false，在 RequestVote 的注释中写得很清楚。
 
 > A false return can be caused by a dead server, a live server that can't be reached, a lost request, or a lost reply.
 
@@ -31,8 +31,6 @@ ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 > any goroutine with a long-running loop should call killed() to check whether it should stop.
 
 > 任何一个长期运行循环的 goroutine 必须调用 `killed()` 检查该 peer 是否被 kill 掉了，然后选择是否应该停止。
-
-如果我没有记错的话，
 
 ```go
 func (rf *Raft) Kill() {
@@ -77,7 +75,7 @@ Leader 默认拥有一个定时器 Timer，但是设定的时间比 Follower 和
 
 #### 所有 Server 必须进行状态降级的条件
 
-如果 RPC Request 或 Response 中的 Term，比自己的 currentTerm 大，则设置自己的 currentTerm 为请求中的 Term，并装换状态为 Follower。
+如果 RPC Request 或 Response 中的 Term，比自己的 currentTerm 大，则设置自己的 currentTerm 为请求中的 Term，并转换状态为 Follower。
 
 #### 如何在状态切换的时候停止执行上一个状态的函数？
 

@@ -182,28 +182,47 @@ func (rf *Raft) leaderTicker(stateCtx context.Context) {
 	var send = func() {
 		rf.mu.Lock()
 
+		snapshot := rf.persister.ReadSnapshot()
+
 		for peer := range rf.peers {
 			if peer == rf.me {
 				continue
 			}
 
-			// If last log index ≥ nextIndex for a follower:
-			// send AppendEntries RPC with log entries starting at nextIndex
+			if rf.nextIndex[peer] > rf.getLastSnapshotIndex() {
+				// If last log index ≥ nextIndex for a follower:
+				// send AppendEntries RPC with log entries starting at nextIndex
 
-			prevLogIndex := rf.nextIndex[peer] - 1
-			prevLogTerm := rf.log[rf.convertIndex(prevLogIndex)].Term
-			entries := make([]LogEntry, len(rf.log[rf.convertIndex(rf.nextIndex[peer]):]))
-			copy(entries, rf.log[rf.convertIndex(rf.nextIndex[peer]):])
+				prevLogIndex := rf.nextIndex[peer] - 1
+				prevLogTerm := rf.log[rf.convertIndex(prevLogIndex)].Term
+				entries := make([]LogEntry, len(rf.log[rf.convertIndex(rf.nextIndex[peer]):]))
+				copy(entries, rf.log[rf.convertIndex(rf.nextIndex[peer]):])
 
-			args := AppendEntriesArgs{
-				Term:         rf.currentTerm,
-				LeaderId:     rf.me,
-				PrevLogIndex: prevLogIndex,
-				PrevLogTerm:  prevLogTerm,
-				Entries:      entries,
-				LeaderCommit: rf.commitIndex,
+				args := AppendEntriesArgs{
+					Term:         rf.currentTerm,
+					LeaderId:     rf.me,
+					PrevLogIndex: prevLogIndex,
+					PrevLogTerm:  prevLogTerm,
+					Entries:      entries,
+					LeaderCommit: rf.commitIndex,
+				}
+				go rf.sendAppendEntries(peer, args, &AppendEntriesReply{})
+			} else {
+				// Although servers normally take snapshots independently,
+				// the leader must occasionally send snapshots to followers that lag behind.
+				// This happens when the leader has already discarded the next log entry that it needs to send to a follower.
+
+				args := InstallSnapshotArgs{
+					Term:              rf.currentTerm,
+					LeaderId:          rf.me,
+					LastIncludedIndex: rf.getLastSnapshotIndex(),
+					LastIncludedTerm:  rf.getLastSnapshotTerm(),
+					Data:              snapshot,
+				}
+
+				go rf.sendInstallSnapshot(peer, &args, &InstallSnapshotReply{})
 			}
-			go rf.sendAppendEntries(peer, args, &AppendEntriesReply{})
+
 		}
 
 		rf.mu.Unlock()

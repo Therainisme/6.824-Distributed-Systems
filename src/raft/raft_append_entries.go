@@ -104,7 +104,7 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		go rf.persist()
 	}()
 
-	if !ok || args.Term != rf.currentTerm {
+	if !ok || rf.state != LEADER_STATE || args.Term != rf.currentTerm {
 		rf.uprint("send error to server %d", server)
 		return
 	}
@@ -125,12 +125,13 @@ func (rf *Raft) sendAppendEntries(server int, args AppendEntriesArgs, reply *App
 		}
 	} else {
 		// If AppendEntries fails because of log inconsistency: decrement nextIndex and retry (§5.3)
-		if rf.nextIndex[server] > 1 {
-			rf.nextIndex[server] = rf.getPrevTermLogIndex(rf.nextIndex[server]) + 1
-			rf.uprint("log len %d, nextIndex %d\n", len(rf.log), rf.nextIndex[server])
-		} else {
-			rf.nextIndex[server] = 1
-		}
+		// if rf.nextIndex[server] > rf.getLastSnapshotIndex() {
+		// 	rf.nextIndex[server] = rf.getPrevTermLogIndex(rf.nextIndex[server]) + 1
+		// 	rf.uprint("log len %d, nextIndex %d\n", len(rf.log), rf.nextIndex[server])
+		// } else {
+		// 	rf.nextIndex[server] = rf.getLastSnapshotIndex()
+		// }
+		rf.nextIndex[server] = rf.getLastSnapshotIndex()
 	}
 
 	// If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm:

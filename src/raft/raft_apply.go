@@ -34,7 +34,7 @@ func (rf *Raft) apply() {
 		msg.Command = rf.log[rf.convertIndex(i)].Command
 		rf.applyCh <- msg
 
-		rf.uprint("apply %v", i)
+		// rf.uprint("apply %v", i)
 	}
 
 	rf.lastAppiled = rf.commitIndex

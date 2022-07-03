@@ -110,7 +110,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 	})
 
-	rf.uprint("L receive log index: %d term: %d command: %v", index, term, command)
+	// rf.uprint("L receive log index: %d term: %d command: %v", index, term, command)
 	// rf.uprint("Now L Logs: %v", rf.log)
 
 	return index, term, isLeader
@@ -188,6 +188,10 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+
+	if rf.getLastSnapshotIndex() > 0 {
+		rf.lastAppiled = rf.getLastSnapshotIndex()
+	}
 
 	// start ticker goroutine to start elections
 	rf.gotoState(FOLLOWER_STATE, true)

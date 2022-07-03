@@ -63,3 +63,30 @@ jobs:
     - name: Test 2C
       working-directory: src/raft
       run: go test -race -run 2C
+  Raft2D:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Test 2D
+      working-directory: src/raft
+      run: go test -run 2D
+  Raft ALL:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: Test Raft ALL
+      working-directory: src/raft
+      run: go test
+  
